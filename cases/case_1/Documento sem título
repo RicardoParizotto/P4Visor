@@ -1,0 +1,8 @@
+python ShadowP4c-bmv2.py --real_source   my_cases/case_1/l2_switch.p4 \
+                        --shadow_source       my_cases/case_1/flowlet.p4 \
+                        --json                my_cases/case_1/l2_switch.json \
+                        --json_s              my_cases/case_1/flowlet.json \
+                        --json_mg             my_cases/case_1/router_merged.json \
+                        --gen_dir             my_cases/case_1/ \
+                        --gen-fig \
+                        --Diff-testing
