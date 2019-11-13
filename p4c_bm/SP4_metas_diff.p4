@@ -38,6 +38,13 @@ header_type intrinsic_metadata_t {
     }
 }
 
+header_type aux_meter_metadata_t {
+    fields {
+         aux_ingress_metadata : 64;
+         aux_swap : 64;
+    }
+}
+
 
 header_type ethernet_t {
     fields {
@@ -47,7 +54,6 @@ header_type ethernet_t {
     }
 }
 
-
 /***************************************************************
  * SP4 header and header instance
  ***************************************************************/
@@ -56,11 +62,13 @@ header shadow_tag_t shadow_tag;
 
 metadata shadow_metadata_t shadow_metadata;
 metadata intrinsic_metadata_t intrinsic_metadata;
+metadata aux_meter_metadata_t meter_metadata;
 
 
 field_list shadow_recirculate_meta {
     shadow_metadata;
     standard_metadata;
+    meter_metadata;
 }
 
 
@@ -96,7 +104,6 @@ parser parse_shadow_tag {
     }
 }
 
-
 /***************************************************************
  * SP4 action
  ***************************************************************/
@@ -124,6 +131,25 @@ action goto_production_pipe() {
 action goto_testing_pipe() {
     no_op();
 }
+
+//performance counters and meters
+
+action _ingress_counter(){
+    register_read(meter_metadata.aux_swap, packet_count, 0);
+    register_write(packet_count, 0, meter_metadata.aux_swap + 1);
+}
+
+register packet_count {
+    width: 64;
+    instance_count: 1;
+}
+
+register timestamps_bank {
+    width: 64;
+    instance_count: 1;
+}
+
+
 
 /***************************************************************
  * SP4 traffic control table
@@ -158,8 +184,6 @@ table recirculate_table {
         _recirculate_pkt;
     }
 }
-
-
 
 /* record running result of production P4 program */
 action _rcd_production_result() {
@@ -212,20 +236,25 @@ table egress_testing_table {
     }
 }
 
+table counter_meters_table {
+    actions {
+         _ingress_counter;
+    }	
+}
+
 control ingress {
     apply(shadow_traffic_control); // todo fix it: add bit to handle resubmited packet
+     
+    apply(counter_meters_table);
 
     if (standard_metadata.instance_type == 0 )  {
         // apply(shadow_traffic_control);
-
         // 1-1 logic start of production P4 program
         // apply(ipv4_lpm);
         // apply(forward);  // logic end of production P4 program
-
         if (shadow_metadata.shadow_bit == SHADOW_PROGRAM_ID) {
             // 1-2 record result to metadata_field_p
             apply(record_production_result);
-
             // 1-3 recirculate the packet
             apply(recirculate_table);
         }
@@ -233,20 +262,18 @@ control ingress {
 
     else {
         // 0-1 logic start of shadow P4 program
-            //re-route the shadow flow
+        //re-route the shadow flow
         // apply(ipv4_lpm_shadow);
         // apply(forward_shadow); // logic end of shadow P4 program
-
         // 0-2 record result to metadata_field_t
         apply(record_shadow_result);
-
         // 0-3 compare the result of TWO P4 programs
         //     here we can configure the compare fields
         if (shadow_metadata.meta_p != shadow_metadata.meta_t) {
             // NOT EQUAL: the shadow program goes wrong
             apply(handle_comparator_error);
         }
-            // ELSE: the shadow program is right, nothing to do
+        // ELSE: the shadow program is right, nothing to do
 
     }
 
